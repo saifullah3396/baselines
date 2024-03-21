@@ -2,8 +2,6 @@ from typing import Any, Optional, Sequence
 
 import torch
 import torch.nn as nn
-from dalle_pytorch import OpenAIDiscreteVAE
-from dalle_pytorch.vae import map_pixels
 from torch import Tensor
 
 from benchmarker.embedding.base import ContextEmbeddings
@@ -18,7 +16,7 @@ class DiscreteEmbeddings(ContextEmbeddings, nn.Module):
     def __init__(
         self,
         dimension: int = 768,
-        embedding_level: str = 'tokens',
+        embedding_level: str = "tokens",
         num_layers: int = 5,
         pretrained_path: Optional[str] = None,
         num_resnet_blocks: int = 0,
@@ -30,7 +28,6 @@ class DiscreteEmbeddings(ContextEmbeddings, nn.Module):
         nn.Module.__init__(self)
         ContextEmbeddings.__init__(self, dimension, embedding_level=embedding_level)
 
-        self.vae = OpenAIDiscreteVAE()
         self.dalee = True
         self.vae.dec = None
         h, w = 32, 32
@@ -45,16 +42,21 @@ class DiscreteEmbeddings(ContextEmbeddings, nn.Module):
         max_length = h * w  # depends on number of layers and image size
         self.use_position_bias = use_position_bias
         self.use_position_embeddings = (
-            not use_position_bias if use_position_embeddings is None else use_position_embeddings
+            not use_position_bias
+            if use_position_embeddings is None
+            else use_position_embeddings
         )
 
         self.semantic_embeddings = nn.Embedding(self.vae.num_tokens, dimension)
-        self.register_buffer('position_ids', torch.arange(max_length).expand((1, -1)))
+        self.register_buffer("position_ids", torch.arange(max_length).expand((1, -1)))
 
         if self.use_position_bias:
             heads = model_config.num_attention_heads
             self.position_bias = RelativePositionBiasAggregated(
-                [RelativePositionBiasVertical(num_heads=heads), RelativePositionBiasHorizontal(num_heads=heads)]
+                [
+                    RelativePositionBiasVertical(num_heads=heads),
+                    RelativePositionBiasHorizontal(num_heads=heads),
+                ]
             )
 
         if self.use_position_embeddings:
@@ -83,7 +85,9 @@ class DiscreteEmbeddings(ContextEmbeddings, nn.Module):
 
         return inputs_embeds, attention_mask
 
-    def produce_bias(self, input_ids, attention_mask, seg_data, position_bias, old_attention_mask):
+    def produce_bias(
+        self, input_ids, attention_mask, seg_data, position_bias, old_attention_mask
+    ):
         if not self.use_position_bias:
             return position_bias
 
@@ -108,7 +112,9 @@ class DiscreteEmbeddings(ContextEmbeddings, nn.Module):
         for idx in range(bs):
             start = start_idx[idx]
             end = min(max_length, start + h * w)
-            seg_data['tokens']['bboxes'][idx, start:end] = coordinates[: min(left[idx], w * h)]
+            seg_data["tokens"]["bboxes"][idx, start:end] = coordinates[
+                : min(left[idx], w * h)
+            ]
 
         new_position_bias = self.position_bias(input_ids, attention_mask, seg_data)
 
@@ -147,7 +153,7 @@ class DiscreteEmbeddings(ContextEmbeddings, nn.Module):
         **kwargs,
     ) -> Tensor:
 
-        image_batch = seg_data['lazyimages']['img_lst']
+        image_batch = seg_data["lazyimages"]["img_lst"]
 
         if len(image_batch.shape) == 3:
             image_batch = image_batch.unsqueeze(1).repeat(1, 3, 1, 1)
@@ -161,13 +167,21 @@ class DiscreteEmbeddings(ContextEmbeddings, nn.Module):
         seq_length = codewords.shape[1]
         position_ids = self.position_ids[:, :seq_length]
 
-        position = self.position_embeddings(position_ids) if self.use_position_embeddings else 0.0
+        position = (
+            self.position_embeddings(position_ids)
+            if self.use_position_embeddings
+            else 0.0
+        )
 
         context_embeddings = semantic + position
 
-        inputs_embeds_, attention_mask_ = self.append_embeddings(text_embeddings, context_embeddings, attention_mask)
+        inputs_embeds_, attention_mask_ = self.append_embeddings(
+            text_embeddings, context_embeddings, attention_mask
+        )
 
-        position_bias_ = self.produce_bias(input_ids, attention_mask_, seg_data, position_bias, attention_mask)
+        position_bias_ = self.produce_bias(
+            input_ids, attention_mask_, seg_data, position_bias, attention_mask
+        )
 
         return (inputs_embeds_, attention_mask_, position_bias_)
 
@@ -175,4 +189,9 @@ class DiscreteEmbeddings(ContextEmbeddings, nn.Module):
 def create_discrete_embeddings(
     pretrained_path: Optional[str] = None, dimension=768, num_layers: int = 5, **kwargs
 ) -> DiscreteEmbeddings:
-    return DiscreteEmbeddings(dimension=dimension, num_layers=num_layers, pretrained_path=pretrained_path, **kwargs)
+    return DiscreteEmbeddings(
+        dimension=dimension,
+        num_layers=num_layers,
+        pretrained_path=pretrained_path,
+        **kwargs,
+    )

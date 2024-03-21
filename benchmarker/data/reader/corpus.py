@@ -17,8 +17,8 @@ class Corpus(BenchmarkCorpusMixin):
         unescape_prefix: bool = True,
         unescape_values: bool = True,
         use_prefix: bool = True,
-        prefix_separator: str = ':',
-        values_separator: str = '|',
+        prefix_separator: str = ":",
+        values_separator: str = "|",
         single_property: bool = True,
         use_none_answers: bool = False,
         case_augmentation: bool = False,
@@ -82,7 +82,9 @@ class Corpus(BenchmarkCorpusMixin):
                 for line in ins:
                     tokens = [t.lower() for t in line.rstrip().split()]
                     for tok in tokens:
-                        self._aug_dict[tok].update([t.replace('_', ' ') for t in tokens])
+                        self._aug_dict[tok].update(
+                            [t.replace("_", " ") for t in tokens]
+                        )
 
     def _augment(self, token: str):
         if not self._aug_dict or token.lower() not in self._aug_dict:
@@ -92,8 +94,10 @@ class Corpus(BenchmarkCorpusMixin):
         return candidates[0]
 
     def _validate_config(self):
-        assert not (self._lowercase_input and self._case_augmentation), 'Do not use lowercasing with case augmentation'
-        assert self._single_property, 'Multi-property is not supported yet'
+        assert not (
+            self._lowercase_input and self._case_augmentation
+        ), "Do not use lowercasing with case augmentation"
+        assert self._single_property, "Multi-property is not supported yet"
 
     def doc_to_instances(
         self, document: Document, dataset: Dataset, strategy: Callable
@@ -113,21 +117,25 @@ class Corpus(BenchmarkCorpusMixin):
         for key in keys:
             values = document.annotations[key]
             if not values:
-                values = ['None']
+                values = ["None"]
 
             if self._use_prefix:
                 prefix = self._paraphrases[key] if self._paraphrases else key
-                prefix = f'{dataset.unescape(prefix) if self._unescape_prefix else prefix} {self._prefix_separator} '
+                prefix = f"{dataset.unescape(prefix) if self._unescape_prefix else prefix} {self._prefix_separator} "
             else:
-                prefix = ''
+                prefix = ""
 
             if self._unescape_values:
                 values = [dataset.unescape(v) for v in values]
 
-            document.document_2d.tokens = [self._augment(t) for t in document.document_2d.tokens]
+            document.document_2d.tokens = [
+                self._augment(t) for t in document.document_2d.tokens
+            ]
 
             if self._lowercase_input:
-                document.document_2d.tokens = [t.lower() for t in document.document_2d.tokens]
+                document.document_2d.tokens = [
+                    t.lower() for t in document.document_2d.tokens
+                ]
                 prefix = prefix.lower()
 
             output_prefix = dataset.output_prefix(key)
@@ -137,7 +145,13 @@ class Corpus(BenchmarkCorpusMixin):
                 if self._lowercase_expected:
                     value = value.lower()
 
-                yield DataInstance(document.identifier, prefix, document.document_2d, output_prefix, value)
+                yield DataInstance(
+                    document.identifier,
+                    prefix,
+                    document.document_2d,
+                    output_prefix,
+                    value,
+                )
 
     def get_instances(
         self, dataset: Dataset, strategy: Callable, case_augmentation=False
@@ -155,7 +169,9 @@ class Corpus(BenchmarkCorpusMixin):
             for doc in dataset:
                 if case_augmentation:
                     yield from (
-                        ins for doc in case_augmenter(doc) for ins in self.doc_to_instances(doc, dataset, strategy)
+                        ins
+                        for doc in case_augmenter(doc)
+                        for ins in self.doc_to_instances(doc, dataset, strategy)
                     )
                 else:
                     yield from self.doc_to_instances(doc, dataset, strategy)
@@ -167,7 +183,9 @@ class Corpus(BenchmarkCorpusMixin):
     @property
     def train(self) -> Optional[Iterator[DataInstance]]:
         """Train set DataInstances."""
-        return self.get_instances(self._train, self._train_strategy, case_augmentation=self._case_augmentation)
+        return self.get_instances(
+            self._train, self._train_strategy, case_augmentation=self._case_augmentation
+        )
 
     @property
     def dev(self) -> Optional[Iterator[DataInstance]]:
@@ -198,7 +216,10 @@ def case_augmenter(doc: Document):
         # change annotations as well, skip augmenting for None values
         new_doc.annotations = defaultdict(
             list,
-            {k: [func(item) if item.lower() != "none" else item for item in v] for k, v in doc.annotations.items()},
+            {
+                k: [func(item) if item.lower() != "none" else item for item in v]
+                for k, v in doc.annotations.items()
+            },
         )
         new_doc.document_2d.tokens = tokens
         yield new_doc

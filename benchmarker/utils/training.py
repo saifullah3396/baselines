@@ -4,31 +4,30 @@ import os
 import re
 import sys
 from argparse import Namespace
-from datetime import date, datetime
+from datetime import date
 from math import ceil
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence, Set, Tuple, Union, cast
+from typing import Any, Dict, Optional, Sequence, Tuple, Union, cast
 
-import pandas as pd
-import pytorch_lightning as pl
 import numpy as np
 import torch
 from torch.utils.data.dataloader import default_collate  # type: ignore
-from transformers import (
-    BertTokenizer,
-    PretrainedConfig,
+from transformers import PretrainedConfig, PreTrainedTokenizer
+from transformers.tokenization_utils_fast import (
     PreTrainedTokenizer,
-    RobertaTokenizer,
-    T5Tokenizer,
-    XLMRobertaTokenizer,
+    PreTrainedTokenizerFast,
 )
-from transformers.tokenization_utils_fast import PreTrainedTokenizerFast
 
-from benchmarker.config.benchmarker_config import CURRENT_SCHEMA_VERSION, BaseBenchmarkerConfig
+from benchmarker.config.benchmarker_config import (
+    CURRENT_SCHEMA_VERSION,
+    BaseBenchmarkerConfig,
+)
+
 # from benchmarker.config.training_config import TrainingConfig
 from benchmarker.data.model.feature import Feature
 from benchmarker.data.utils import FEAT_META, IMG_SIZE_DIVISIBILITY
-from benchmarker.model import MODEL_CLASSES#, Roberta2dForPreTrainingWrapper
+from benchmarker.model import MODEL_CLASSES  # , Roberta2dForPreTrainingWrapper
+
 # from benchmarker.model.bert import Bert2dForPreTrainingWrapper
 
 
@@ -56,31 +55,35 @@ def calculate_dataset_size(pregenerated_data_path: Path) -> list:
 
 
 def join_embedding_types(config: BaseBenchmarkerConfig) -> str:
-    embedding_types = [args['embedding_type'] for args in config.context_embeddings]
+    embedding_types = [args["embedding_type"] for args in config.context_embeddings]
     if config.page_embeddings_type != "none":
         page_type = [f"page.{config.page_embeddings_type}"]
     else:
         page_type = []
     # limit name of relative embeddings to 3 characters i.e. `horizontal` -> `rel.hor`
-    rel_type = ["rel." + args['type'][:3] for args in config.relative_bias_args]
+    rel_type = ["rel." + args["type"][:3] for args in config.relative_bias_args]
     return "+".join(embedding_types + page_type + rel_type)
 
 
-#def conf_to_model_name(config: BaseBenchmarkerConfig, training_config: TrainingConfig, num_samples: int) -> str:
-def conf_to_model_name(config: BaseBenchmarkerConfig, training_config, num_samples: int) -> str:
+# def conf_to_model_name(config: BaseBenchmarkerConfig, training_config: TrainingConfig, num_samples: int) -> str:
+def conf_to_model_name(
+    config: BaseBenchmarkerConfig, training_config, num_samples: int
+) -> str:
     if (training_config.data_dir / "metrics.json").is_file():
         metric_file = training_config.data_dir / "metrics.json"
     else:
         metric_file = training_config.data_dir / "epoch_0" / "metrics.json"
     with open(metric_file, "r") as f:
-        num_training_examples = json.loads(f.read())['num_training_examples']
+        num_training_examples = json.loads(f.read())["num_training_examples"]
 
     ce_args = ""
     base_model_dir = str(training_config.model_path).split("/")[-1]
     base_name = (
         base_model_dir
         if len(base_model_dir) < 30
-        else re.split("[ ,\-_]", base_model_dir)[0] + "-" + hashlib.md5(base_model_dir.encode()).hexdigest()[:10]
+        else re.split("[ ,\-_]", base_model_dir)[0]
+        + "-"
+        + hashlib.md5(base_model_dir.encode()).hexdigest()[:10]
     )
     if (
         len(config.context_embeddings) > 0
@@ -89,12 +92,14 @@ def conf_to_model_name(config: BaseBenchmarkerConfig, training_config, num_sampl
     ):
         ce_args = hashlib.md5(
             (
-                str(config.context_embeddings) + str(config.page_embeddings_args) + str(config.relative_bias_args)
+                str(config.context_embeddings)
+                + str(config.page_embeddings_args)
+                + str(config.relative_bias_args)
             ).encode()
         ).hexdigest()[:10]
         embedding_description = join_embedding_types(config)
     else:
-        embedding_description = 'none'
+        embedding_description = "none"
 
     if num_samples > 1000000:
         ns = str(int(num_samples / 1000000)) + "m"
@@ -120,7 +125,9 @@ def conf_to_model_name(config: BaseBenchmarkerConfig, training_config, num_sampl
 
 
 def check_model_type_consistency(model_path: Path, model_type: str) -> None:
-    assert model_type in MODEL_CLASSES.keys(), f"Model type {model_type} is not supported"
+    assert (
+        model_type in MODEL_CLASSES.keys()
+    ), f"Model type {model_type} is not supported"
 
     contain_mtype_in_name = False
     for mtype in MODEL_CLASSES.keys():
@@ -128,17 +135,21 @@ def check_model_type_consistency(model_path: Path, model_type: str) -> None:
             contain_mtype_in_name = True
     if contain_mtype_in_name:
         assert model_type + "-" in model_path.stem, (
-            f"Model picked up with {model_type}, " "but folder name contains different architecture name"
+            f"Model picked up with {model_type}, "
+            "but folder name contains different architecture name"
         )
-    config = MODEL_CLASSES[model_type]['config'].from_pretrained(str(model_path))
-    if hasattr(config, 'model_type'):
+    config = MODEL_CLASSES[model_type]["config"].from_pretrained(str(model_path))
+    if hasattr(config, "model_type"):
         assert (
             config.model_type == model_type
         ), f"Model was trained with different architecture: {config.model_type} != {model_type}"
 
 
 def load_config(
-    model_path: Path, model_type: str = "bert", return_unused_kwargs: bool = False, **kwargs: Any
+    model_path: Path,
+    model_type: str = "bert",
+    return_unused_kwargs: bool = False,
+    **kwargs: Any,
 ) -> Union[PretrainedConfig, Tuple[PretrainedConfig, Dict[str, Any]]]:
     """
     Saves model params to config.json file. Includes both base Bert configuration, as well as
@@ -153,25 +164,26 @@ def load_config(
     check_model_type_consistency(model_path, model_type)
 
     model_dict = kwargs.copy()
-    model_dict['model_type'] = model_type
-    model_dict['model_path'] = model_path
+    model_dict["model_type"] = model_type
+    model_dict["model_path"] = model_path
 
-    if 'bert_model' in model_dict.keys():
-        model_dict['model_path'] = model_dict['bert_model']
+    if "bert_model" in model_dict.keys():
+        model_dict["model_path"] = model_dict["bert_model"]
 
     for key, value in model_dict.items():
         if isinstance(value, Path):
             model_dict[key] = str(value)
 
-    return MODEL_CLASSES[model_type]['config2d'].from_pretrained(
+    return MODEL_CLASSES[model_type]["config2d"].from_pretrained(
         model_path, return_unused_kwargs=return_unused_kwargs, **model_dict
     )
 
 
 def load_tokenizer(
-        model_path: Path, model_type: str = "bert",
-        do_lower_case: Optional[bool] = None,
-        convert_to_fast_tokenizer: bool = False
+    model_path: Path,
+    model_type: str = "bert",
+    do_lower_case: Optional[bool] = None,
+    convert_to_fast_tokenizer: bool = False,
 ) -> Union[PreTrainedTokenizer, PreTrainedTokenizerFast]:
     """
     Loads BertTokenizer from Bert model directory.
@@ -187,19 +199,23 @@ def load_tokenizer(
     """
     check_model_type_consistency(model_path, model_type)
     if do_lower_case is not None:
-        tokenizer = MODEL_CLASSES[model_type]['tokenizer'].from_pretrained(
+        tokenizer = MODEL_CLASSES[model_type]["tokenizer"].from_pretrained(
             str(model_path), do_lower_case=do_lower_case
         )
     else:
-        config = MODEL_CLASSES[model_type]['config'].from_pretrained(str(model_path))
+        config = MODEL_CLASSES[model_type]["config"].from_pretrained(str(model_path))
         if config is None:
-            raise FileNotFoundError(f"Provided model or identifier {model_path} is not valid")
+            raise FileNotFoundError(
+                f"Provided model or identifier {model_path} is not valid"
+            )
         if hasattr(config, "do_lower_case"):
-            tokenizer = MODEL_CLASSES[model_type]['tokenizer'].from_pretrained(
+            tokenizer = MODEL_CLASSES[model_type]["tokenizer"].from_pretrained(
                 str(model_path), do_lower_case=config.do_lower_case
             )
         else:
-            tokenizer = MODEL_CLASSES[model_type]['tokenizer'].from_pretrained(str(model_path))
+            tokenizer = MODEL_CLASSES[model_type]["tokenizer"].from_pretrained(
+                str(model_path)
+            )
 
     if not convert_to_fast_tokenizer or isinstance(tokenizer, PreTrainedTokenizerFast):
         return tokenizer
@@ -232,20 +248,21 @@ def load_2d_model(
             model_path, model_type=model_type, args=args, return_unused_kwargs=False, **kwargs  # type: ignore
         )
     config = cast(BaseBenchmarkerConfig, config)  # type: ignore
-    if mode == 'pretraining':
-        model = MODEL_CLASSES[model_type]['pretraining'].from_pretrained(
+    if mode == "pretraining":
+        model = MODEL_CLASSES[model_type]["pretraining"].from_pretrained(
             str(model_path), config=config, state_dict=state_dict
         )
-    elif mode == 'embedding':
-        model = MODEL_CLASSES[model_type]['embedding'].from_pretrained(
-            str(model_path), config=config, state_dict=state_dict)
-    elif mode == 'token_classification':
-        model = MODEL_CLASSES[model_type]['token_classification'].from_pretrained(
-            str(model_path), config=config, state_dict=state_dict)
+    elif mode == "embedding":
+        model = MODEL_CLASSES[model_type]["embedding"].from_pretrained(
+            str(model_path), config=config, state_dict=state_dict
+        )
+    elif mode == "token_classification":
+        model = MODEL_CLASSES[model_type]["token_classification"].from_pretrained(
+            str(model_path), config=config, state_dict=state_dict
+        )
     else:
         raise NotImplementedError(
-            "There is no model mode implemented for "
-            + f"given string {mode}"
+            "There is no model mode implemented for " + f"given string {mode}"
         )
 
     return model  # type: ignore
@@ -254,15 +271,19 @@ def load_2d_model(
 def features_collate(batch: Sequence[Feature]) -> Dict[str, Any]:
     dict_batch = {}
     token_label_ids_batch = [feat.token_label_ids for feat in batch]
-    dict_batch['token_label_ids'] = cast(Dict[str, Any], default_collate(token_label_ids_batch))
+    dict_batch["token_label_ids"] = cast(
+        Dict[str, Any], default_collate(token_label_ids_batch)
+    )
     lm_label_ids_batch = [feat.lm_label_ids for feat in batch]
-    dict_batch['lm_label_ids'] = cast(Dict[str, Any], default_collate(lm_label_ids_batch))
+    dict_batch["lm_label_ids"] = cast(
+        Dict[str, Any], default_collate(lm_label_ids_batch)
+    )
     input_masks_batch = [feat.input_masks for feat in batch]
-    dict_batch['input_masks'] = cast(Dict[str, Any], default_collate(input_masks_batch))
+    dict_batch["input_masks"] = cast(Dict[str, Any], default_collate(input_masks_batch))
     input_ids_batch = [feat.input_ids for feat in batch]
-    dict_batch['input_ids'] = cast(Dict[str, Any], default_collate(input_ids_batch))
+    dict_batch["input_ids"] = cast(Dict[str, Any], default_collate(input_ids_batch))
     seg_data_batch = [feat.seg_data for feat in batch]
-    dict_batch['seg_data'] = dict_collate(seg_data_batch)
+    dict_batch["seg_data"] = dict_collate(seg_data_batch)
     return dict_batch
 
 
@@ -272,8 +293,9 @@ def dict_collate(batch: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         for k in batch[0].keys():
             if k == "img_lst":
                 # assuming 3 channels, temporary and only for DALLE
-                dict_batch[k] = merge_images_into_tensor([el[k].permute(2,0,1) for el in batch], 
-                                                         IMG_SIZE_DIVISIBILITY)
+                dict_batch[k] = merge_images_into_tensor(
+                    [el[k].permute(2, 0, 1) for el in batch], IMG_SIZE_DIVISIBILITY
+                )
             else:
                 dict_batch[k] = dict_collate([el[k] for el in batch])
         return prepare_batch_dict(dict_batch)
@@ -284,8 +306,8 @@ def dict_collate(batch: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def merge_images_into_tensor(
-        tensors: list, size_divisibility: int = 64, pad_value: float = 255.
-    ) -> "torch.Tensor":
+    tensors: list, size_divisibility: int = 64, pad_value: float = 255.0
+) -> "torch.Tensor":
     """
     Copied from detectron2
     Args:
@@ -324,14 +346,18 @@ def merge_images_into_tensor(
     return batched_imgs.contiguous()
 
 
-def prepare_batch_dict(batch: Dict[str, Any], device: Union[str, torch.device, None] = None) -> Dict[str, Any]:
+def prepare_batch_dict(
+    batch: Dict[str, Any], device: Union[str, torch.device, None] = None
+) -> Dict[str, Any]:
     for skey, seg in batch.items():
         if isinstance(seg, dict):
             batch[skey] = prepare_batch_dict(seg, device)
         elif isinstance(seg, torch.Tensor):
-            batch[skey] = seg.to(dtype=FEAT_META[skey]['train_dtype'], device=device)
+            batch[skey] = seg.to(dtype=FEAT_META[skey]["train_dtype"], device=device)
         elif isinstance(seg, list) and skey == "img_lst":
-            batch[skey] = [s.to(dtype=FEAT_META[skey]['train_dtype'], device=device) for s in seg]
+            batch[skey] = [
+                s.to(dtype=FEAT_META[skey]["train_dtype"], device=device) for s in seg
+            ]
     return batch
 
 
@@ -348,8 +374,9 @@ def _as_tensor(x: Tuple[int, int]) -> torch.Tensor:
     return torch.as_tensor(x)
 
 
-def dict_collate_trim_l5(batch: Sequence[Dict[str, Any]],
-                         input_len=None, target_len=None, divisibility=32) -> Dict[str, Any]:
+def dict_collate_trim_l5(
+    batch: Sequence[Dict[str, Any]], input_len=None, target_len=None, divisibility=32
+) -> Dict[str, Any]:
     if input_len is None:
         input_len = max([s["attention_mask"].sum() for s in batch])
         input_len = (input_len + (divisibility - 1)) // divisibility * divisibility
@@ -361,26 +388,42 @@ def dict_collate_trim_l5(batch: Sequence[Dict[str, Any]],
         for k in batch[0].keys():
             if k == "img_lst":
                 # assuming 3 channels, temporary and only for DALLE
-                dict_batch[k] = merge_images_into_tensor([el[k].permute(2,0,1) for el in batch],
-                                                         IMG_SIZE_DIVISIBILITY)
+                dict_batch[k] = merge_images_into_tensor(
+                    [el[k].permute(2, 0, 1) for el in batch], IMG_SIZE_DIVISIBILITY
+                )
             else:
-                dict_batch[k] = dict_collate_trim_l5([el[k] for el in batch], input_len, target_len)
-        return prepare_batch_dict_trim_l5(dict_batch, input_len=input_len, target_len=target_len)
+                dict_batch[k] = dict_collate_trim_l5(
+                    [el[k] for el in batch], input_len, target_len
+                )
+        return prepare_batch_dict_trim_l5(
+            dict_batch, input_len=input_len, target_len=target_len
+        )
     elif batch[0] is None:
         return None  # type: ignore
     else:
         return cast(Dict[str, Any], default_collate(batch))
 
 
-def prepare_batch_dict_trim_l5(batch: Dict[str, Any], device: Union[str, torch.device, None] = None,
-                               input_len=None, target_len=None) -> Dict[str, Any]:
+def prepare_batch_dict_trim_l5(
+    batch: Dict[str, Any],
+    device: Union[str, torch.device, None] = None,
+    input_len=None,
+    target_len=None,
+) -> Dict[str, Any]:
     assert input_len is not None and target_len is not None
     for skey, seg in batch.items():
         if isinstance(seg, dict):
             batch[skey] = prepare_batch_dict_trim_l5(seg, device, input_len, target_len)
         elif isinstance(seg, torch.Tensor):
-            batch[skey] = seg.to(dtype=FEAT_META[skey]['train_dtype'], device=device)
-            if skey in ("attention_mask", "bboxes", "input_ids", "ranges", "masks", "token_map"):
+            batch[skey] = seg.to(dtype=FEAT_META[skey]["train_dtype"], device=device)
+            if skey in (
+                "attention_mask",
+                "bboxes",
+                "input_ids",
+                "ranges",
+                "masks",
+                "token_map",
+            ):
                 batch[skey] = batch[skey][:, :input_len].contiguous()
             elif skey == "labels":
                 batch[skey] = batch[skey][:, :target_len].contiguous()
@@ -388,7 +431,9 @@ def prepare_batch_dict_trim_l5(batch: Dict[str, Any], device: Union[str, torch.d
     return batch
 
 
-def save_checkpoint(model: Any, tokenizer: PreTrainedTokenizer, epoch: Optional[int], output_dir: Path) -> None:
+def save_checkpoint(
+    model: Any, tokenizer: PreTrainedTokenizer, epoch: Optional[int], output_dir: Path
+) -> None:
     """
     Save model checkpoint.
 
@@ -460,19 +505,32 @@ def get_total_steps(
             epoch_samples = dataset_size[i % len(dataset_size)]
             # Lightning tends to cut off few last samples (idk why),
             # +1 enforces last epoch ending (and calling validation).
-            epoch_steps = int(ceil(epoch_samples / single_gpu_batch_size / accumulate_grad_batches)) + 1
+            epoch_steps = (
+                int(
+                    ceil(
+                        epoch_samples / single_gpu_batch_size / accumulate_grad_batches
+                    )
+                )
+                + 1
+            )
             total_steps += epoch_steps
     else:
-        total_steps = int(ceil(max_train_samples / single_gpu_batch_size / accumulate_grad_batches))
+        total_steps = int(
+            ceil(max_train_samples / single_gpu_batch_size / accumulate_grad_batches)
+        )
 
     assert total_steps != 0, "max_train_samples too low."
 
     return total_steps
 
 
-def calculate_accumulate_grad_batches(gpus_num: int, eff_batch_size: int, single_gpu_batch_size: int) -> int:
+def calculate_accumulate_grad_batches(
+    gpus_num: int, eff_batch_size: int, single_gpu_batch_size: int
+) -> int:
     if eff_batch_size % (gpus_num * single_gpu_batch_size) != 0:
-        raise ValueError("Effective batch size should be a divisible by single_gpu_batch_size * gpus_num.")
+        raise ValueError(
+            "Effective batch size should be a divisible by single_gpu_batch_size * gpus_num."
+        )
 
     return int(eff_batch_size / (gpus_num * single_gpu_batch_size))
 
@@ -483,7 +541,9 @@ def save_training_config(args_dict: Dict[str, Any], model_out_path: Path):
     :param args_dict: dictionary with all training parameters.
     :param model_out_path: where to store training_config.json.
     """
-    _, training_args = load_config(schema_version=CURRENT_SCHEMA_VERSION, return_unused_kwargs=True, **args_dict)
+    _, training_args = load_config(
+        schema_version=CURRENT_SCHEMA_VERSION, return_unused_kwargs=True, **args_dict
+    )
     training_config = TrainingConfig(**training_args)
 
     if not os.path.exists(model_out_path):

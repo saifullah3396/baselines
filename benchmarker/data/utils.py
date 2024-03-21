@@ -9,37 +9,124 @@ from benchmarker.data.document import Doc2d
 IMG_SIZE = (384, 512)
 IMG_SIZE_DIVISIBILITY = 64
 FEAT_META = {
-    'input_ids': {'dtype': np.int32, 'dim': [], 'wide': True, 'default': 0, 'train_dtype': torch.int64},
-    'lm_label_ids': {'dtype': np.int32, 'dim': [], 'wide': True, 'default': -1, 'train_dtype': torch.int64},
-    'labels': {'dtype': np.int32, 'dim': [], 'wide': True, 'default': -1, 'train_dtype': torch.int64},
-    'input_masks': {'dtype': np.bool, 'dim': [], 'wide': True, 'default': 0, 'train_dtype': torch.uint8},
-    'attention_mask': {'dtype': np.bool, 'dim': [], 'wide': True, 'default': 0, 'train_dtype': torch.uint8},
-    'bboxes': {'dtype': np.float16, 'dim': [4], 'wide': True, 'default': 0, 'train_dtype': torch.float},
-    'ranges': {'dtype': np.int32, 'dim': [2], 'wide': True, 'default': 0, 'train_dtype': torch.int64},
-    'ordinals': {'dtype': np.int32, 'dim': [], 'wide': True, 'default': -1, 'train_dtype': torch.float},
-    'cardinality': {'dtype': np.int32, 'dim': [], 'wide': False, 'default': 0, 'train_dtype': torch.float},
-    'org_bboxes': {'dtype': np.uint16, 'dim': [4]},
-    'ocr_ranges': {'dtype': np.int32, 'dim': [2]},
-    'token_map': {'dtype': np.int16, 'dim': [], 'wide': True, 'default': -1, 'train_dtype': torch.int64},
-    'masks': {'dtype': np.bool, 'dim': [], 'wide': True, 'default': 0, 'train_dtype': torch.uint8},
-    'masked_word_ids': {'dtype': np.int32, 'dim': [], 'wide': False, 'default': -1, 'train_dtype': torch.int64},
-    'token_label_ids': {'dtype': np.int16, 'dim': [], 'wide': True, 'default': -1, 'train_dtype': torch.int64},
-    'doc_id': {'dtype': 'U100', 'dim': [], 'wide': False, 'default': ''},
-    'label_name': {'dtype': 'U100', 'dim': [], 'wide': False, 'default': ''},
-    'img_lst': {'dtype': np.uint8, 'train_dtype': torch.float},
-    'path': {'dtype': 'U256', 'dim': [], 'wide': False, 'default': ''},
+    "input_ids": {
+        "dtype": np.int32,
+        "dim": [],
+        "wide": True,
+        "default": 0,
+        "train_dtype": torch.int64,
+    },
+    "lm_label_ids": {
+        "dtype": np.int32,
+        "dim": [],
+        "wide": True,
+        "default": -1,
+        "train_dtype": torch.int64,
+    },
+    "labels": {
+        "dtype": np.int32,
+        "dim": [],
+        "wide": True,
+        "default": -1,
+        "train_dtype": torch.int64,
+    },
+    "input_masks": {
+        "dtype": bool,
+        "dim": [],
+        "wide": True,
+        "default": 0,
+        "train_dtype": torch.uint8,
+    },
+    "attention_mask": {
+        "dtype": bool,
+        "dim": [],
+        "wide": True,
+        "default": 0,
+        "train_dtype": torch.uint8,
+    },
+    "bboxes": {
+        "dtype": np.float16,
+        "dim": [4],
+        "wide": True,
+        "default": 0,
+        "train_dtype": torch.float,
+    },
+    "ranges": {
+        "dtype": np.int32,
+        "dim": [2],
+        "wide": True,
+        "default": 0,
+        "train_dtype": torch.int64,
+    },
+    "ordinals": {
+        "dtype": np.int32,
+        "dim": [],
+        "wide": True,
+        "default": -1,
+        "train_dtype": torch.float,
+    },
+    "cardinality": {
+        "dtype": np.int32,
+        "dim": [],
+        "wide": False,
+        "default": 0,
+        "train_dtype": torch.float,
+    },
+    "org_bboxes": {"dtype": np.uint16, "dim": [4]},
+    "ocr_ranges": {"dtype": np.int32, "dim": [2]},
+    "token_map": {
+        "dtype": np.int16,
+        "dim": [],
+        "wide": True,
+        "default": -1,
+        "train_dtype": torch.int64,
+    },
+    "masks": {
+        "dtype": bool,
+        "dim": [],
+        "wide": True,
+        "default": 0,
+        "train_dtype": torch.uint8,
+    },
+    "masked_word_ids": {
+        "dtype": np.int32,
+        "dim": [],
+        "wide": False,
+        "default": -1,
+        "train_dtype": torch.int64,
+    },
+    "token_label_ids": {
+        "dtype": np.int16,
+        "dim": [],
+        "wide": True,
+        "default": -1,
+        "train_dtype": torch.int64,
+    },
+    "doc_id": {"dtype": "U100", "dim": [], "wide": False, "default": ""},
+    "label_name": {"dtype": "U100", "dim": [], "wide": False, "default": ""},
+    "img_lst": {"dtype": np.uint8, "train_dtype": torch.float},
+    "path": {"dtype": "U256", "dim": [], "wide": False, "default": ""},
 }
 
 
-def get_bpe_positions(token_pos: Tuple[int, int, int, int], bpe_lens: Sequence[int]) -> Sequence[Sequence[float]]:
+def get_bpe_positions(
+    token_pos: Tuple[int, int, int, int], bpe_lens: Sequence[int]
+) -> Sequence[Sequence[float]]:
     pos_lst = []
     tok_len = max(1, sum(bpe_lens))
     offset = 0
     x1, y1, x2, y2 = token_pos
     xwidth = x2 - x1
-    assert xwidth >= 0, f'not correct token postions: {token_pos}'
+    assert xwidth >= 0, f"not correct token postions: {token_pos}"
     for bpe_len in bpe_lens:
-        pos_lst.append([x1 + (offset / tok_len) * xwidth, y1, x1 + ((offset + bpe_len) / tok_len) * xwidth, y2])
+        pos_lst.append(
+            [
+                x1 + (offset / tok_len) * xwidth,
+                y1,
+                x1 + ((offset + bpe_len) / tok_len) * xwidth,
+                y2,
+            ]
+        )
         offset += bpe_len
     return pos_lst
 
@@ -61,29 +148,40 @@ def get_data_part(
     part_seg_data: Dict[str, Any] = {}
     for segkey, seg in seg_data.items():
         part_seg_data[segkey] = {}
-        if segkey == 'tokens':
-            part_seg_data[segkey]['bboxes'] = seg['bboxes'][from_range:to_range]
-            part_seg_data[segkey]['org_bboxes'] = seg['org_bboxes'][from_range:to_range]
+        if segkey == "tokens":
+            part_seg_data[segkey]["bboxes"] = seg["bboxes"][from_range:to_range]
+            part_seg_data[segkey]["org_bboxes"] = seg["org_bboxes"][from_range:to_range]
         elif segkey in ("lines", "pages"):
-            part_seg_idx = [max(from_range, rng[0]) < min(to_range, rng[1]) for rng in seg['ranges']]
+            part_seg_idx = [
+                max(from_range, rng[0]) < min(to_range, rng[1]) for rng in seg["ranges"]
+            ]
             for el_key, el_data in seg.items():
-                if el_key == 'ranges':
-                    part_seg_data[segkey][el_key] = np.clip(el_data[part_seg_idx, :] - from_range, 0, max_bpe + 1)
-                elif el_key in ('bboxes', 'org_bboxes', 'ordinals', 'ocr_ranges'):
+                if el_key == "ranges":
+                    part_seg_data[segkey][el_key] = np.clip(
+                        el_data[part_seg_idx, :] - from_range, 0, max_bpe + 1
+                    )
+                elif el_key in ("bboxes", "org_bboxes", "ordinals", "ocr_ranges"):
                     part_seg_data[segkey][el_key] = el_data[part_seg_idx]
-                elif el_key == 'cardinality':
+                elif el_key == "cardinality":
                     part_seg_data[segkey][el_key] = el_data
                 else:
                     raise ValueError(
-                        f"Key {el_key} in seg_data dictionary is not supported " "by get_data_part function"
+                        f"Key {el_key} in seg_data dictionary is not supported "
+                        "by get_data_part function"
                     )
     if "images" in seg_data:
         page_idx = part_seg_data["pages"]["ordinals"]
         if page_idx.size == 0:
             page_idx = [0]
-        assert len(page_idx) <= 1, "Images are supported only in single-page spliting strategies"
-        part_seg_data["images"]["img_data"] = seg_data["images"]["img_data"][page_idx[0]]
-        part_seg_data["images"]["img_size"] = seg_data["images"]["img_size"][page_idx[0]]
+        assert (
+            len(page_idx) <= 1
+        ), "Images are supported only in single-page spliting strategies"
+        part_seg_data["images"]["img_data"] = seg_data["images"]["img_data"][
+            page_idx[0]
+        ]
+        part_seg_data["images"]["img_size"] = seg_data["images"]["img_size"][
+            page_idx[0]
+        ]
     if "lazyimages" in seg_data:
         part_seg_data["lazyimages"]["path"] = seg_data["lazyimages"]["path"]
 
@@ -112,7 +210,9 @@ def apply_on_nested_dict(fn: Callable, ndict: Dict[str, Any]) -> Dict[str, Any]:
     return new_dict
 
 
-def add_missing_tokens(orig_lines: np.ndarray, added_elements: np.ndarray, reorder_idx: np.ndarray = None):
+def add_missing_tokens(
+    orig_lines: np.ndarray, added_elements: np.ndarray, reorder_idx: np.ndarray = None
+):
     """
     :param orig_lines: numpy array with original lines element to be modified with new values
     :param added_elements: numpy array with additional elements to be added to lines
@@ -134,15 +234,19 @@ def fix_missing_tokens_in_lines(doc: Doc2d):
     :param doc: Doc2d instance to be fixed
     :return: fixed Doc2d instance with additional elements in seg_data['lines']
     """
-    assert 'tokens' in doc.seg_data, "Tokens data need to be present in doc2d to fix missing lines"
-    if 'lines' not in doc.seg_data:
+    assert (
+        "tokens" in doc.seg_data
+    ), "Tokens data need to be present in doc2d to fix missing lines"
+    if "lines" not in doc.seg_data:
         return doc
 
     # get missing token indexes
     missing_tokens = []
     offset = 0
-    for ln_range in doc.seg_data['lines']['ranges']:
-        assert ln_range[0] >= offset, f'Ranges need to be in ascending order: {ln_range[0]} >= {offset}'
+    for ln_range in doc.seg_data["lines"]["ranges"]:
+        assert (
+            ln_range[0] >= offset
+        ), f"Ranges need to be in ascending order: {ln_range[0]} >= {offset}"
         if ln_range[0] > offset:
             missing_tokens.extend(list(range(offset, ln_range[0])))
         offset = ln_range[1]
@@ -155,21 +259,27 @@ def fix_missing_tokens_in_lines(doc: Doc2d):
     doc_fixed = deepcopy(doc)
 
     # generate ranges for missing tokens
-    add_ranges = np.hstack((np.array(missing_tokens)[:, None], np.array(missing_tokens)[:, None] + 1))
-    doc_fixed.seg_data['lines']['ranges'], reorder_idx = add_missing_tokens(doc.seg_data['lines']['ranges'], add_ranges)
+    add_ranges = np.hstack(
+        (np.array(missing_tokens)[:, None], np.array(missing_tokens)[:, None] + 1)
+    )
+    doc_fixed.seg_data["lines"]["ranges"], reorder_idx = add_missing_tokens(
+        doc.seg_data["lines"]["ranges"], add_ranges
+    )
 
     # add bboxes
-    add_boxes = doc.seg_data['tokens']['org_bboxes'][missing_tokens]
-    doc_fixed.seg_data['lines']['org_bboxes'], _ = add_missing_tokens(
-        doc.seg_data['lines']['org_bboxes'], add_boxes, reorder_idx
+    add_boxes = doc.seg_data["tokens"]["org_bboxes"][missing_tokens]
+    doc_fixed.seg_data["lines"]["org_bboxes"], _ = add_missing_tokens(
+        doc.seg_data["lines"]["org_bboxes"], add_boxes, reorder_idx
     )
 
     # add ocr_ranges
-    if 'ocr_ranges' in doc.seg_data['lines']:
-        assert doc.token_ocr_ranges is not None, "Token ocr ranges are required " "to compute missing lines"
+    if "ocr_ranges" in doc.seg_data["lines"]:
+        assert doc.token_ocr_ranges is not None, (
+            "Token ocr ranges are required " "to compute missing lines"
+        )
         add_ocr_ranges = doc.token_ocr_ranges[missing_tokens]
-        doc_fixed.seg_data['lines']['ocr_ranges'], _ = add_missing_tokens(
-            doc.seg_data['lines']['ocr_ranges'], add_ocr_ranges, reorder_idx
+        doc_fixed.seg_data["lines"]["ocr_ranges"], _ = add_missing_tokens(
+            doc.seg_data["lines"]["ocr_ranges"], add_ocr_ranges, reorder_idx
         )
 
     return doc_fixed

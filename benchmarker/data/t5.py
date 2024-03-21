@@ -1,15 +1,13 @@
 import logging
-import random
-from collections import defaultdict
 from copy import deepcopy
 from functools import partial
 from multiprocessing import Pool
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 import numpy as np
 from transformers import PreTrainedTokenizer
 
-from benchmarker.data.data_converter import DataConverter, NotEnoughSalientSpans
+from benchmarker.data.data_converter import DataConverter
 from benchmarker.data.model.feature import Feature
 from benchmarker.data.model.span import Span
 from benchmarker.data.reader.common import DataInstance
@@ -60,7 +58,9 @@ def convert_ranges_to_noise_mask(noise_spans_ranges, length):
     return is_noise[:length]
 
 
-def random_spans_noise_mask(length, seg_data, noise_density=0.2, mean_noise_span_length=3.5):
+def random_spans_noise_mask(
+    length, seg_data, noise_density=0.2, mean_noise_span_length=3.5
+):
     """Partially coppied from text-to-text-transfer-transformer git repo
     :param length: number of tokens
     :param seg_data: dictionary with segment/visual data
@@ -87,7 +87,10 @@ def random_spans_noise_mask(length, seg_data, noise_density=0.2, mean_noise_span
           up to num_items
         """
         first_in_segment = np.pad(
-            np.random.permutation((np.arange(num_items - 1) < num_segments - 1).astype(np.int)), [[1, 0]]
+            np.random.permutation(
+                (np.arange(num_items - 1) < num_segments - 1).astype(np.int)
+            ),
+            [[1, 0]],
         )
         segment_id = np.cumsum(first_in_segment)
         # segment_length = np.segment_sum(np.ones_like(segment_id), segment_id)
@@ -97,7 +100,8 @@ def random_spans_noise_mask(length, seg_data, noise_density=0.2, mean_noise_span
     noise_span_lengths = _random_segmentation(num_noise_tokens, num_noise_spans)
     nonnoise_span_lengths = _random_segmentation(num_nonnoise_tokens, num_noise_spans)
     interleaved_span_lengths = np.reshape(
-        np.stack([nonnoise_span_lengths, noise_span_lengths], axis=1), [num_noise_spans * 2]
+        np.stack([nonnoise_span_lengths, noise_span_lengths], axis=1),
+        [num_noise_spans * 2],
     )
     span_starts = np.cumsum(interleaved_span_lengths)
     noise_spans_ranges = span_starts.reshape(-1, 2)
@@ -128,7 +132,10 @@ def _recompute_seg_data_for_sentinels(seg_data, noise_mask, noise_spans_ranges):
     is_token_mask = np.ones(len(tok_bboxes), dtype=np.bool)
     for span in noise_spans_ranges:
         tok_bboxes[span[0] : span[1]] = np.concatenate(
-            [tok_bboxes[span[0] : span[1], 0:2].min(axis=0), tok_bboxes[span[0] : span[1], 2:4].max(axis=0)]
+            [
+                tok_bboxes[span[0] : span[1], 0:2].min(axis=0),
+                tok_bboxes[span[0] : span[1], 2:4].max(axis=0),
+            ]
         )
         is_token_mask[span[0] + 1 : span[1]] = False
 
@@ -152,34 +159,40 @@ def _recompute_seg_data_for_sentinels(seg_data, noise_mask, noise_spans_ranges):
             seg_ranges = seg["ranges"]
             new_range = np.stack(
                 (
-                    np.searchsorted(tok_range[:, 0], seg_ranges[:, 0], 'left'),
-                    np.searchsorted(tok_range[:, 1], seg_ranges[:, 1], 'right'),
+                    np.searchsorted(tok_range[:, 0], seg_ranges[:, 0], "left"),
+                    np.searchsorted(tok_range[:, 1], seg_ranges[:, 1], "right"),
                 ),
                 axis=-1,
             )
-            seg['ranges'] = new_range
+            seg["ranges"] = new_range
 
     return seg_data
 
 
 def data_instance_2_feature(dconv, data_instance):
     doc2d = data_instance.document_2d
-    hard_limit = dconv._max_seq_length \
-                    if dconv._long_page_strategy == LongPageStrategy.FIRST_PART \
-                    else None
+    hard_limit = (
+        dconv._max_seq_length
+        if dconv._long_page_strategy == LongPageStrategy.FIRST_PART
+        else None
+    )
     if dconv.skip_text_tokens:
         doc2d.tokens = []
     example = dconv.create_example(deepcopy(doc2d), hard_limit)
     spans = dconv.create_spans(example)
     doc_span = spans[0]
     if not doc_span.tokens:
-        doc_span.seg_data['pages'] = example.seg_data['pages']
+        doc_span.seg_data["pages"] = example.seg_data["pages"]
 
-    startx, starty, endx, endy = doc_span.seg_data['pages']['bboxes'][0, :]
+    startx, starty, endx, endy = doc_span.seg_data["pages"]["bboxes"][0, :]
     if startx + starty != 0 or endx <= 0 or endy <= 0:
-        logger.warning(f"Wrong page_bbox: [{startx} {starty} {endx} {endy}]! Skipping doc: {doc2d.docid}")
+        logger.warning(
+            f"Wrong page_bbox: [{startx} {starty} {endx} {endy}]! Skipping doc: {doc2d.docid}"
+        )
         return None
-    span_decoder = dconv.convert_span_for_decoder(doc_span, data_instance.output, data_instance.input_prefix)
+    span_decoder = dconv.convert_span_for_decoder(
+        doc_span, data_instance.output, data_instance.input_prefix
+    )
     feature = dconv.convert_span_to_feature(span_decoder)
     feature.doc_id = data_instance.identifier
     feature.label_name = data_instance.output_prefix
@@ -308,7 +321,7 @@ class T5DownstreamDataConverter(DataConverter):
         tokenizer: PreTrainedTokenizer,
         long_page_strategy=LongPageStrategy.FIRST_PART,
         max_seq_length: int = 512,
-        segment_levels: Tuple[str, ...] = ('tokens', 'lines'),
+        segment_levels: Tuple[str, ...] = ("tokens", "lines"),
         overlap: int = 100,
         additional_bpe_tokens_count: int = 0,
         prefix_bbox_fill_value: float = -0.01,  # small negative value to easily distinguish prefixes
@@ -329,8 +342,10 @@ class T5DownstreamDataConverter(DataConverter):
             **kwargs,
         )
         if skip_text_tokens:
-            logging.warning("You are using dataconverter with skip_text_tokens mode. "
-                            "All text tokens will be removed from input")
+            logging.warning(
+                "You are using dataconverter with skip_text_tokens mode. "
+                "All text tokens will be removed from input"
+            )
         self.skip_text_tokens = skip_text_tokens
         self.prefix_bbox_fill_value = prefix_bbox_fill_value
         self.img_matrix_order = img_matrix_order
@@ -347,21 +362,27 @@ class T5DownstreamDataConverter(DataConverter):
         # modify segment ranges and token bboxes
         fill_value = self.prefix_bbox_fill_value
         order = self.img_matrix_order
-        img_tok_count = order ** 2
-        startx, starty, endx, endy = seg_data['pages']['bboxes'][0, :]
+        img_tok_count = order**2
+        startx, starty, endx, endy = seg_data["pages"]["bboxes"][0, :]
         for segkey, seg in seg_data.items():
-            if segkey == 'tokens':
-                seg['bboxes'] = np.pad(
-                    seg['bboxes'], ((start_ct, end_ct), (0, 0)), 'constant', constant_values=fill_value
+            if segkey == "tokens":
+                seg["bboxes"] = np.pad(
+                    seg["bboxes"],
+                    ((start_ct, end_ct), (0, 0)),
+                    "constant",
+                    constant_values=fill_value,
                 )
-                seg['org_bboxes'] = np.pad(
-                    seg['org_bboxes'], ((start_ct, end_ct), (0, 0)), 'constant', constant_values=fill_value
+                seg["org_bboxes"] = np.pad(
+                    seg["org_bboxes"],
+                    ((start_ct, end_ct), (0, 0)),
+                    "constant",
+                    constant_values=fill_value,
                 )
                 # check if special tokens should have some 2d positons
                 x_special = (
                     np.arange(start_ct - img_tok_count) / 20 + fill_value
                 )  # so 1 token is about 5% of page width
-                seg['bboxes'][img_tok_count:start_ct, [0, 2]] = x_special[:, None]
+                seg["bboxes"][img_tok_count:start_ct, [0, 2]] = x_special[:, None]
 
                 # add bboxes for image grid
                 if order > 0:
@@ -371,27 +392,41 @@ class T5DownstreamDataConverter(DataConverter):
                     starty_img = np.mgrid[starty : endy : endy / order]
                     starty_img = np.tile(starty_img, order)
                     endy_img = starty_img + endy / order
-                    seg['bboxes'][:img_tok_count] = np.stack((startx_img, starty_img, endx_img, endy_img), axis=1)
-            elif segkey == 'lines':
-                seg['ranges'] = seg['ranges'] + start_ct
+                    seg["bboxes"][:img_tok_count] = np.stack(
+                        (startx_img, starty_img, endx_img, endy_img), axis=1
+                    )
+            elif segkey == "lines":
+                seg["ranges"] = seg["ranges"] + start_ct
                 # add line for prefix
-                seg['ranges'] = np.concatenate((np.array([[0, start_ct]]), seg['ranges']))
-                seg['bboxes'] = np.concatenate((np.array([[fill_value] * 4]), seg['bboxes']))
-            elif segkey == 'pages':
-                seg['ranges'] = seg['ranges'] + start_ct
+                seg["ranges"] = np.concatenate(
+                    (np.array([[0, start_ct]]), seg["ranges"])
+                )
+                seg["bboxes"] = np.concatenate(
+                    (np.array([[fill_value] * 4]), seg["bboxes"])
+                )
+            elif segkey == "pages":
+                seg["ranges"] = seg["ranges"] + start_ct
 
         return seg_data
 
     def _add_special_tokens(
-        self, bpe_tokens: List[str], org_tokens_idx: List[int], token_label_ids: List[int], seg_data: Dict[str, Any]
+        self,
+        bpe_tokens: List[str],
+        org_tokens_idx: List[int],
+        token_label_ids: List[int],
+        seg_data: Dict[str, Any],
     ) -> Tuple[List[str], List[int], List[int], Dict[str, Any]]:
         return bpe_tokens, org_tokens_idx, token_label_ids, seg_data
 
-    def generate_features(self, training_instances_iterator: Iterator[DataInstance]) -> Iterator[Feature]:
+    def generate_features(
+        self, training_instances_iterator: Iterator[DataInstance]
+    ) -> Iterator[Feature]:
         func = partial(data_instance_2_feature, self)
         if self.processes > 1:
             with Pool(processes=self.processes) as pool:
-                for feature in pool.imap(func, training_instances_iterator, chunksize=self.imap_chunksize):
+                for feature in pool.imap(
+                    func, training_instances_iterator, chunksize=self.imap_chunksize
+                ):
                     if feature is not None:
                         yield feature
         # skip Pool for easier debugging
@@ -400,7 +435,9 @@ class T5DownstreamDataConverter(DataConverter):
                 if feature is not None:
                     yield feature
 
-    def convert_span_for_decoder(self, span, label_value, prefix, max_answer_length=1024):
+    def convert_span_for_decoder(
+        self, span, label_value, prefix, max_answer_length=1024
+    ):
         """
         :param span: span which need to be modified
         :param label_name: name of the labal which will be added to the input tokens
@@ -409,14 +446,16 @@ class T5DownstreamDataConverter(DataConverter):
         :return: modified span
         """
 
-        prefix = '<extra_id_99> ' * self.img_matrix_order ** 2 + prefix
+        prefix = "<extra_id_99> " * self.img_matrix_order**2 + prefix
         tokenizer_ = self.tokenizer
         prefix_encoder_bpe = tokenizer_.tokenize(prefix)
         prefix_len = len(prefix_encoder_bpe)
 
         answer_bpe = tokenizer_.tokenize(label_value) + [tokenizer_.eos_token]
         if len(answer_bpe) > max_answer_length:
-            logger.warning(f"Used max_answer_length={max_answer_length} cannot encode whole answer")
+            logger.warning(
+                f"Used max_answer_length={max_answer_length} cannot encode whole answer"
+            )
         answer_bpe = answer_bpe[:max_answer_length]
 
         tokens = prefix_encoder_bpe + span.tokens
@@ -429,8 +468,12 @@ class T5DownstreamDataConverter(DataConverter):
             tokens = tokens[:-excess_tokens_count]
             token_label_indices = token_label_indices[:-excess_tokens_count]
             original_tokens_indices = original_tokens_indices[:-excess_tokens_count]
-            seg_data['tokens']['bboxes'] = seg_data['tokens']['bboxes'][:-excess_tokens_count]
-            seg_data['tokens']['org_bboxes'] = seg_data['tokens']['org_bboxes'][:-excess_tokens_count]
+            seg_data["tokens"]["bboxes"] = seg_data["tokens"]["bboxes"][
+                :-excess_tokens_count
+            ]
+            seg_data["tokens"]["org_bboxes"] = seg_data["tokens"]["org_bboxes"][
+                :-excess_tokens_count
+            ]
 
         new_span = Span(
             example_id=span.example_id,
