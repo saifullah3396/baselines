@@ -31,26 +31,26 @@ def generate_memmaps(
     model_path: str,
     memmap_path: str,
     max_encoder_length: int = 512,
-    model_type: str = 't5',
+    model_type: str = "t5",
     unescape_prefix: bool = False,
     unescape_values: bool = True,
     use_prefix: bool = True,
-    prefix_separator: str = ':',
-    values_separator: str = '|',
+    prefix_separator: str = ":",
+    values_separator: str = "|",
     single_property: bool = True,
     use_none_answers: bool = False,
     use_fast_tokenizer: bool = False,
     limit: int = -1,
     case_augmentation: bool = False,
-    segment_levels: tuple = ('tokens', 'lines'),
-    long_page_strategy: str = 'FIRST_PART',
-    ocr_engine: str = 'tesseract',
+    segment_levels: tuple = ("tokens", "lines"),
+    long_page_strategy: str = "FIRST_PART",
+    ocr_engine: str = "tesseract",
     lowercase_expected: bool = False,
     lowercase_input: bool = False,
-    train_strategy: str = 'first_item',
-    dev_strategy: str = 'concat',
-    test_strategy: str = 'concat',
-    augment_tokens_from_file: str = '',
+    train_strategy: str = "first_item",
+    dev_strategy: str = "concat",
+    test_strategy: str = "concat",
+    augment_tokens_from_file: str = "",
     img_matrix_order: int = 0,
     processes=1,
     imap_chunksize=100,
@@ -123,7 +123,9 @@ def generate_memmaps(
         segment_levels=segment_levels,
     )
 
-    tokenizer = load_tokenizer(model_path, model_type=model_type, convert_to_fast_tokenizer=use_fast_tokenizer)
+    tokenizer = load_tokenizer(
+        model_path, model_type=model_type, convert_to_fast_tokenizer=use_fast_tokenizer
+    )
     data_converter = T5DownstreamDataConverter(
         tokenizer,
         segment_levels=segment_levels,
@@ -134,14 +136,21 @@ def generate_memmaps(
         imap_chunksize=imap_chunksize,
         skip_text_tokens=skip_text_tokens,
     )
-    for set_name in ('train', 'dev', 'test'):
+    for set_name in ("train", "dev", "test"):
         subset = getattr(corpus, set_name)
         if not subset:
             continue
+        print(subset)
         train_features = data_converter.generate_features(subset)
         train_features = list_wrapper(train_features, limit)
-        save_t5_kleister_cache(memmap_path / set_name, tokenizer, train_features, max_encoder_length, segment_levels)
+        save_t5_kleister_cache(
+            memmap_path / set_name,
+            tokenizer,
+            train_features,
+            max_encoder_length,
+            segment_levels,
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     fire.Fire(generate_memmaps)

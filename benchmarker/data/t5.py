@@ -383,6 +383,7 @@ class T5DownstreamDataConverter(DataConverter):
                     np.arange(start_ct - img_tok_count) / 20 + fill_value
                 )  # so 1 token is about 5% of page width
                 seg["bboxes"][img_tok_count:start_ct, [0, 2]] = x_special[:, None]
+                print('seg["bboxes"]', seg["bboxes"])
 
                 # add bboxes for image grid
                 if order > 0:
